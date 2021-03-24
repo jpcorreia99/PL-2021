@@ -1,8 +1,6 @@
 import re
 import time
-
 from typing import List
-
 
 # ideia - várias operações
 # valores vazios
@@ -10,6 +8,11 @@ from typing import List
 # alerta para operações não suportadas
 # alerta para linhas demasiado preenchidas
 # alerta para valores não numéricos no csv
+# operador group permite manter os valores
+
+#TODO verificar o findall da linha 130, é mesmo necessário findall?
+# substituir concatenações nos raises por f strings
+
 
 def process_header(header_line: str) -> (List[str], List[str]):
     """Retrieves information about the fields declared in the header
@@ -23,12 +26,13 @@ def process_header(header_line: str) -> (List[str], List[str]):
     Returns:
         [List(str),List(str)]: 
         column_names (List(str)): List of the names of each column,
-        column_operations (List(str)): List where each index corresponds to the type of operation to be applied to the corresponding column by index
+        column_operations (List(str)): List where each index corresponds to the type of
+        operation to be applied to the corresponding column by index
     """
 
     column_names = []
     column_operations = []
-    supported_folds = ["sum", "avg", "max", "min"]
+    supported_group_operations = ["group", "sum", "avg", "max", "min"]
     captures = re.findall(r'([^*;]+)(\*)?([^;]+)?', header_line);
 
     for capture in captures:
@@ -40,7 +44,7 @@ def process_header(header_line: str) -> (List[str], List[str]):
             column_operations.append(["group"])
         else:  # 3
             operations = [operation.lower() for operation in capture[2].split(",")]
-            if any([operation not in supported_folds for operation in operations]):
+            if any([operation not in supported_group_operations for operation in operations]):
                 raise NameError("Unsupported Operation in header")
             else:
                 column_operations.append(operations)
@@ -95,7 +99,8 @@ def convert_to_json(csv_lines: List[str],
     Args:
         csv_lines (List[str]): Each line of the csv
         column_names (List[str]): List of the names of each column
-        column_operations (List[str]): List where each index corresponds to the type of operation to be applied to the corresponding column by index
+        spcolumn_operations (List[str]): List where each index corresponds to the type of operation
+        to be applied to the corresponding column by index
 
     Raises:
         AttributeError: If there's a row with a different number of columns than defined by the header
@@ -109,24 +114,29 @@ def convert_to_json(csv_lines: List[str],
         string_list.append("\t{")
         # capture a field delimited by either ';' 
         # or end of line OR capture an empty field
-        fields = re.findall(r'([^;]+)(?:;|$)|;', line)
+        # fields = re.findall(r'([^;]+)(?:;|$)|;', line)
+        fields = line.split(";")
+
         if len(fields) != len(column_names):
             raise AttributeError(
                 "Row " + str(i + 2) + " does not have the same number of columns as determined by the header")
 
         for j, field in enumerate(fields):
-            if column_operations[j] == "none":
-                string_list.append(f'\t\t"{column_names[j]}": "{field}",')
-            else:
-                values = re.match(r'\(([^)]+)\)', field)  # extract the values inside the parenthesis
-                if not values:
-                    raise AttributeError("Row " + str(i + 2) + " presents empty parenthesis on a group column")
-               
-                values = list(re.findall(r'([^,]+)(?:,|$)',  # find values separated by commas
-                                         values.group(1)))  # group(1) since we want what's inside
-                                                     # the parenthesis, not the full match
-                string_list = string_list + process_operations(column_names[j], values, column_operations[j],
-                                                              j == len(fields)-1) # boolean indicating it's the last column of the line
+            if field: # skips empty fields
+                if column_operations[j] == "none":
+                    string_list.append(f'\t\t"{column_names[j]}": "{field}",')
+                else:
+                    values = re.match(r'\(([^)]+)\)', field)  # extract the values inside the parenthesis, since it's a list column
+                    if not values:
+                        raise AttributeError("Row " + str(i + 2) + " presents empty parenthesis on a group column")
+                
+                    values = list(re.findall(r'([^,]+)(?:,|$)',  # find values separated by commas
+                                            values.group(1)))    # group(1) since we want what's inside
+                                                                 # the parenthesis, not the full match
+                    if len(values) > 0:
+                        string_list = string_list + process_operations(column_names[j], values, column_operations[j],
+                                                                    j == len(fields)-1) # boolean indicating it's the last column
+                                                                                        # of the line
         if(i == len(csv_lines)-1):
             string_list.append("\t}") # the last object doest not have a comma
         else:
