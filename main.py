@@ -1,6 +1,7 @@
 import re
 import time
 from typing import List
+import sys
 
 # ideia - várias operações
 # valores vazios
@@ -11,7 +12,8 @@ from typing import List
 # operador group permite manter os valores
 
 #TODO verificar o findall da linha 130, é mesmo necessário findall?
-# substituir concatenações nos raises por f strings
+# A fazer ler argumentos
+# detetar separador
 
 
 def process_header(header_line: str) -> (List[str], List[str]):
@@ -33,7 +35,7 @@ def process_header(header_line: str) -> (List[str], List[str]):
     column_names = []
     column_operations = []
     supported_group_operations = ["group", "sum", "avg", "max", "min"]
-    captures = re.findall(r'([^*;]+)(\*)?([^;]+)?', header_line);
+    captures = re.findall(r'([^+*;]+)(\*|\+)?([^;]+)?', header_line);
 
     for capture in captures:
         num_clauses = len(list(filter(None, capture)))
@@ -41,7 +43,10 @@ def process_header(header_line: str) -> (List[str], List[str]):
         if num_clauses == 1:
             column_operations.append("none")
         elif num_clauses == 2:
-            column_operations.append(["group"])
+            if capture[1] == "*":
+                column_operations.append(["group"])
+            elif capture[1] == "+":
+                column_operations.append("cast")
         else:  # 3
             operations = [operation.lower() for operation in capture[2].split(",")]
             if any([operation not in supported_group_operations for operation in operations]):
@@ -85,11 +90,13 @@ def process_operations(column_name: str,
             elif operation == "max":
                 operation_result = f'\t\t"{column_name}_max": {max(numeric_values)}'
                 
-            operation_results.append(operation_result + ("" if last_column and i==len(operations)-1 else ","))
+            operation_results.append(operation_result +
+             ("" if last_column and i==len(operations)-1 else ",")) #also checks if it's the last operation of the given column
 
         return operation_results
     except ValueError:
-        raise ValueError("Non numeric element in row " + str(j)+" in a column that demands such");
+        raise ValueError(f"Non numeric element in row {str(j)} in a column that demands such");
+
 
 def convert_to_json(csv_lines: List[str],
                  column_names: List[str],
@@ -104,8 +111,9 @@ def convert_to_json(csv_lines: List[str],
 
     Raises:
         AttributeError: If there's a row with a different number of columns than defined by the header
-        AttributeError: If a row contains an empty parenthesis on a group column
+        AttributeError: If a row contains an empty or missing parenthesis on a group column
         ValueError: If a row contains non-numeric values on a group column
+        ValueError: If a row with a cast operation contains non-numeric values
     """
     string_list = []
 
@@ -119,24 +127,32 @@ def convert_to_json(csv_lines: List[str],
 
         if len(fields) != len(column_names):
             raise AttributeError(
-                "Row " + str(i + 2) + " does not have the same number of columns as determined by the header")
+                f"Row {str(i + 2)} does not have the same number of columns as determined by the header")
 
         for j, field in enumerate(fields):
             if field: # skips empty fields
                 if column_operations[j] == "none":
-                    string_list.append(f'\t\t"{column_names[j]}": "{field}",')
+                    string_list.append(f'\t\t"{column_names[j]}": "{field}"' +
+                        ("," if (len(list(filter(None,fields[j:]))) > 1) else "")) # condition checks if it's not the last non-empty field   
+                elif column_operations[j]== "cast":
+                    try:
+                        numeric_value = float(field)
+                        string_list.append(f'\t\t"{column_names[j]}": {numeric_value}' +
+                        ("," if (len(list(filter(None,fields[j:]))) > 1) else "")) # condition checks if it's not the last non-empty field   
+                    except ValueError:
+                        raise ValueError(f"Row {str(i + 2)}: {field} can't be casted to a numeric value")
                 else:
                     values = re.match(r'\(([^)]+)\)', field)  # extract the values inside the parenthesis, since it's a list column
                     if not values:
-                        raise AttributeError("Row " + str(i + 2) + " presents empty parenthesis on a group column")
+                        raise AttributeError(f"Row {str(i + 2)} presents empty parenthesis or no parenthesis on a group column")
                 
                     values = list(re.findall(r'([^,]+)(?:,|$)',  # find values separated by commas
                                             values.group(1)))    # group(1) since we want what's inside
                                                                  # the parenthesis, not the full match
                     if len(values) > 0:
                         string_list = string_list + process_operations(column_names[j], values, column_operations[j],
-                                                                    j == len(fields)-1) # boolean indicating it's the last column
-                                                                                        # of the line
+                                                                    # boolean indicating it's the last column of the line
+                                                                    len(list(filter(None,fields[j:]))) == 1)
         if(i == len(csv_lines)-1):
             string_list.append("\t}") # the last object doest not have a comma
         else:
@@ -145,8 +161,26 @@ def convert_to_json(csv_lines: List[str],
     string_list.append("]")
     return '\n'.join(string_list)
 
+
+print('Number of arguments:', len(sys.argv), 'arguments.')
+print('Argument List:', str(sys.argv))
+
+if len(sys.argv) == 1:
+    input_file_path = "input/data.csv"
+    output_file_path = f"output/data.json"
+elif len(sys.argv) == 2: 
+    input_file_path = f"input/{sys.argv[1]}"
+    output_file_path = f"output/data.json"
+elif len(sys.argv) == 3:
+    input_file_path = f"input/{sys.argv[1]}"
+    output_file_path = f"output/{sys.argv[2]}"
+else:
+    raise ValueError("Wrong number of arguments.\nUsage: python main.py [input_file_name] [output_file_name]")
+
+
+print(input_file_path)
 # Reading the file
-file = open("data/data.csv")
+file = open(input_file_path)
 lines = file.read().splitlines()  # splitlines to remove \n
 file.close()
 
@@ -160,7 +194,7 @@ json_txt = convert_to_json(lines[1:], csv_column_names, csv_column_operations)
 end = time.time()
 
 # Writing to json
-output_file = open("data/data.json", "w")
+output_file = open(output_file_path, "w")
 output_file.write(json_txt)
 output_file.close()
 
