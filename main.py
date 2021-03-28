@@ -10,6 +10,9 @@ import sys
 # alerta para linhas demasiado preenchidas
 # alerta para valores não numéricos no csv
 # operador group permite manter os valores
+# operador de cast para valor numérico
+# deteção automática do separador
+# ler ficheiro de input e output
 
 #TODO verificar o findall da linha 130, é mesmo necessário findall?
 # A fazer ler argumentos
@@ -26,6 +29,8 @@ def process_header(header_line: str) -> (List[str], List[str]):
         NameError: Unsupported operation is found in the header
 
     Returns:
+        str: field, delimiter 
+        str: character separating group operations, 
         [List(str),List(str)]: 
         column_names (List(str)): List of the names of each column,
         column_operations (List(str)): List where each index corresponds to the type of
@@ -35,7 +40,15 @@ def process_header(header_line: str) -> (List[str], List[str]):
     column_names = []
     column_operations = []
     supported_group_operations = ["group", "sum", "avg", "max", "min"]
-    captures = re.findall(r'([^+*;]+)(\*|\+)?([^;]+)?', header_line);
+    field_delimiter = re.match(r'(?:[^+*;,]+)(?:\*|\+)?(?:[^;,]+)?(;|,|$)',header_line).group(1)
+
+    if field_delimiter == ';':
+        operations_separator = ","
+        captures = re.findall(r'([^+*;]+)(\*|\+)?([^;]+)?', header_line);
+    else:
+        field_delimiter = "," # needs to be set as ',' since $ will break the program when processing de body 
+        operations_separator = ";"
+        captures = re.findall(r'([^+*,]+)(\*|\+)?([^,]+)?', header_line);
 
     for capture in captures:
         num_clauses = len(list(filter(None, capture)))
@@ -48,17 +61,18 @@ def process_header(header_line: str) -> (List[str], List[str]):
             elif capture[1] == "+":
                 column_operations.append("cast")
         else:  # 3
-            operations = [operation.lower() for operation in capture[2].split(",")]
+            operations = [operation.lower() for operation in capture[2].split(operations_separator)]
             if any([operation not in supported_group_operations for operation in operations]):
                 raise NameError("Unsupported Operation in header")
             else:
                 column_operations.append(operations)
 
-    return column_names, column_operations
+    return field_delimiter, operations_separator,column_names, column_operations
 
 def process_operations(column_name: str,
                       values: List[str],
                       operations: List[str],
+                      row_number: int,
                       last_column: bool) -> List[str]:
 
     """ Converts line portion corresponding to an operations column to it's json conterpart
@@ -66,7 +80,8 @@ def process_operations(column_name: str,
     Args:
         column_name: Name of the column being processed,
         values: list of values present in said column,
-        operations: list of operations to be applied to the values in the values list, matched by index
+        operations: list of operations to be applied to the values in the values list, matched by index,
+        row_number: useful for throwing informative exceptions
         last_column: flag indicating if it's the last column of the line being processed, for comma purposes
 
     Raises:
@@ -95,12 +110,14 @@ def process_operations(column_name: str,
 
         return operation_results
     except ValueError:
-        raise ValueError(f"Non numeric element in row {str(j)} in a column that demands such");
+        raise ValueError(f"Non numeric element in row {str(row_number)} in a column that demands such");
 
 
 def convert_to_json(csv_lines: List[str],
+                 field_delimiter: str,
+                 operations_separator: str,
                  column_names: List[str],
-                 column_operations: List[str]):
+                 column_operations: List[str]) -> str:
     """Processes each line of the body of the csv and converts it to a string in json format
 
     Args:
@@ -114,6 +131,9 @@ def convert_to_json(csv_lines: List[str],
         AttributeError: If a row contains an empty or missing parenthesis on a group column
         ValueError: If a row contains non-numeric values on a group column
         ValueError: If a row with a cast operation contains non-numeric values
+
+    Returns:
+        str: String containing the complete JSON file
     """
     string_list = []
 
@@ -123,7 +143,7 @@ def convert_to_json(csv_lines: List[str],
         # capture a field delimited by either ';' 
         # or end of line OR capture an empty field
         # fields = re.findall(r'([^;]+)(?:;|$)|;', line)
-        fields = line.split(";")
+        fields = line.split(field_delimiter)
 
         if len(fields) != len(column_names):
             raise AttributeError(
@@ -145,12 +165,13 @@ def convert_to_json(csv_lines: List[str],
                     values = re.match(r'\(([^)]+)\)', field)  # extract the values inside the parenthesis, since it's a list column
                     if not values:
                         raise AttributeError(f"Row {str(i + 2)} presents empty parenthesis or no parenthesis on a group column")
-                
-                    values = list(re.findall(r'([^,]+)(?:,|$)',  # find values separated by commas
-                                            values.group(1)))    # group(1) since we want what's inside
-                                                                 # the parenthesis, not the full match
+
+                    # find values separated by the operations_separator, group(1) since we want what's inside the parenthesis, not the full match
+                    #values = list(re.findall(fr'([^{operations_separator}]+)(?:{operations_separator}|$)', values.group(1))) 
+                    values = values.group(1).split(operations_separator)
+
                     if len(values) > 0:
-                        string_list = string_list + process_operations(column_names[j], values, column_operations[j],
+                        string_list = string_list + process_operations(column_names[j], values, column_operations[j],i + 2,
                                                                     # boolean indicating it's the last column of the line
                                                                     len(list(filter(None,fields[j:]))) == 1)
         if(i == len(csv_lines)-1):
@@ -162,8 +183,6 @@ def convert_to_json(csv_lines: List[str],
     return '\n'.join(string_list)
 
 
-print('Number of arguments:', len(sys.argv), 'arguments.')
-print('Argument List:', str(sys.argv))
 
 if len(sys.argv) == 1:
     input_file_path = "input/data.csv"
@@ -178,7 +197,6 @@ else:
     raise ValueError("Wrong number of arguments.\nUsage: python main.py [input_file_name] [output_file_name]")
 
 
-print(input_file_path)
 # Reading the file
 file = open(input_file_path)
 lines = file.read().splitlines()  # splitlines to remove \n
@@ -189,8 +207,8 @@ if len(lines) < 2:
 
 # Processing the file
 start = time.time()
-csv_column_names, csv_column_operations = process_header(lines[0])
-json_txt = convert_to_json(lines[1:], csv_column_names, csv_column_operations)
+field_delimiter, operations_separator, csv_column_names, csv_column_operations = process_header(lines[0])
+json_txt = convert_to_json(lines[1:],field_delimiter, operations_separator,csv_column_names, csv_column_operations)
 end = time.time()
 
 # Writing to json
