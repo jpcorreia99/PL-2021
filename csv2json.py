@@ -19,7 +19,7 @@ import sys
 # detetar separador
 
 
-def process_header(header_line: str) -> (List[str], List[str]):
+def process_header(header_line: str) -> str, str, List[str], List[str]:
     """Retrieves information about the fields declared in the header
 
     Args:
@@ -29,12 +29,10 @@ def process_header(header_line: str) -> (List[str], List[str]):
         NameError: Unsupported operation is found in the header
 
     Returns:
-        str: field, delimiter 
+        str: field delimiter 
         str: character separating group operations, 
-        [List(str),List(str)]: 
-        column_names (List(str)): List of the names of each column,
-        column_operations (List(str)): List where each index corresponds to the type of
-        operation to be applied to the corresponding column by index
+        List(str): List of the names of each column,
+        List(str): List where each index corresponds to the type of operation to be applied to the corresponding column by index
     """
 
     column_names = []
@@ -46,7 +44,7 @@ def process_header(header_line: str) -> (List[str], List[str]):
         operations_separator = ","
         captures = re.findall(r'([^+*;]+)(\*|\+)?([^;]+)?', header_line);
     else:
-        field_delimiter = "," # needs to be set as ',' since $ will break the program when processing de body 
+        field_delimiter = "," # needs to be set as ',' since $ will break the program when processing the body 
         operations_separator = ";"
         captures = re.findall(r'([^+*,]+)(\*|\+)?([^,]+)?', header_line);
 
@@ -57,11 +55,11 @@ def process_header(header_line: str) -> (List[str], List[str]):
             column_operations.append("none")
         elif num_clauses == 2:
             if capture[1] == "*":
-                column_operations.append(["group"])
+                column_operations.append(["group"]) #all operations over a list of values must be inside a list
             elif capture[1] == "+":
                 column_operations.append("cast")
         else:  # 3
-            operations = [operation.lower() for operation in capture[2].split(operations_separator)]
+            operations = [operation.lower() for operation in capture[2].split(operations_separator)] #all operations over a list of values must be inside a list
             if any([operation not in supported_group_operations for operation in operations]):
                 raise NameError("Unsupported Operation in header")
             else:
@@ -78,11 +76,11 @@ def process_operations(column_name: str,
     """ Converts line portion corresponding to an operations column to it's json conterpart
 
     Args:
-        column_name: Name of the column being processed,
-        values: list of values present in said column,
-        operations: list of operations to be applied to the values in the values list, matched by index,
-        row_number: useful for throwing informative exceptions
-        last_column: flag indicating if it's the last column of the line being processed, for comma purposes
+        column_name (str): Name of the column being processed,
+        values (List[str]): list of values present in said column,
+        operations (List[str]): list of operations to be applied to the values in the values list, matched by index,
+        row_number (int): number of row being processed, useful for throwing informative exceptions
+        last_column (boolean): flag indicating if it's the last non-empty column of the row being currently processed, for comma purposes
 
     Raises:
         ValueError:  If there's non-numeric values on a list of values
@@ -164,7 +162,7 @@ def convert_to_json(csv_lines: List[str],
                 else:
                     values = re.match(r'\(([^)]+)\)', field)  # extract the values inside the parenthesis, since it's a list column
                     if not values:
-                        raise AttributeError(f"Row {str(i + 2)} presents empty parenthesis or no parenthesis on a group column")
+                        raise AttributeError(f"Row {str(i + 2)} group column has incorrect format")
 
                     # find values separated by the operations_separator, group(1) since we want what's inside the parenthesis, not the full match
                     #values = list(re.findall(fr'([^{operations_separator}]+)(?:{operations_separator}|$)', values.group(1))) 
@@ -181,7 +179,6 @@ def convert_to_json(csv_lines: List[str],
             
     string_list.append("]")
     return '\n'.join(string_list)
-
 
 
 if len(sys.argv) == 1:
