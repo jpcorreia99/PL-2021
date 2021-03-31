@@ -19,7 +19,7 @@ import sys
 # detetar separador
 
 
-def process_header(header_line: str) -> str, str, List[str], List[str]:
+def process_header(header_line: str) -> (str, str, List[str], List[str]):
     """Retrieves information about the fields declared in the header
 
     Args:
