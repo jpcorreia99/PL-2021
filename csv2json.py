@@ -3,22 +3,6 @@ import time
 from typing import List
 import sys
 
-# ideia - várias operações
-# valores vazios
-# alerta para csvs vazios
-# alerta para operações não suportadas
-# alerta para linhas demasiado preenchidas
-# alerta para valores não numéricos no csv
-# operador group permite manter os valores
-# operador de cast para valor numérico
-# deteção automática do separador
-# ler ficheiro de input e output
-
-#TODO verificar o findall da linha 130, é mesmo necessário findall?
-# A fazer ler argumentos
-# detetar separador
-
-
 def process_header(header_line: str) -> (str, str, List[str], List[str]):
 	"""Retrieves information about the fields declared in the header
 
@@ -58,7 +42,7 @@ def process_header(header_line: str) -> (str, str, List[str], List[str]):
 				column_operations.append(["group"]) #all operations over a list of values must be inside a list
 			elif capture[1] == "+":
 				column_operations.append("cast")
-		else:  # 3
+		else:  # num_clauses == 3
 			operations = [operation.lower() for operation in capture[2].split(operations_separator)] #all operations over a list of values must be inside a list
 			if any([operation not in supported_group_operations for operation in operations]):
 				raise NameError("Unsupported Operation in header")
@@ -138,9 +122,6 @@ def convert_to_json(csv_lines: List[str],
 	string_list.append("[")
 	for i, line in enumerate(csv_lines):
 		string_list.append("\t{")
-		# capture a field delimited by either ';' 
-		# or end of line OR capture an empty field
-		# fields = re.findall(r'([^;]+)(?:;|$)|;', line)
 		fields = line.split(field_delimiter)
 
 		if len(fields) != len(column_names):
@@ -165,7 +146,6 @@ def convert_to_json(csv_lines: List[str],
 						raise AttributeError(f"Row {str(i + 2)} group column has incorrect format")
 
 					# find values separated by the operations_separator, group(1) since we want what's inside the parenthesis, not the full match
-					#values = list(re.findall(fr'([^{operations_separator}]+)(?:{operations_separator}|$)', values.group(1))) 
 					values = values.group(1).split(operations_separator)
 
 					if len(values) > 0:
