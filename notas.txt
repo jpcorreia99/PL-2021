@@ -1,1 +1,0 @@
-values = list(re.findall(fr'([^{operations_separator}]+)(?:{operations_separator}|$)', values.group(1)))  == values.group(1).split(operations_separator)
