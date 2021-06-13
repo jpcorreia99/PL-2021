@@ -1,9 +1,9 @@
 import re
 import time
-from typing import List
+from typing import List, Tuple
 import sys
 
-def process_header(header_line: str) -> (str, str, List[str], List[str]):
+def process_header(header_line: str) -> Tuple[str, str, List[str], List[str]]:
 	"""Retrieves information about the fields declared in the header
 
 	Args:
@@ -19,7 +19,7 @@ def process_header(header_line: str) -> (str, str, List[str], List[str]):
 		List(str): List where each index corresponds to the type of operation to be applied to the corresponding column by index
 	"""
 
-	column_names = []
+	column_names = [] 
 	column_operations = []
 	supported_group_operations = ["group", "sum", "avg", "max", "min"]
 	field_delimiter = re.match(r'[^+*;,]+(?:\*|\+)?(?:[^;,]+)?(;|,|$)',header_line).group(1)
