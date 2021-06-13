@@ -1,6 +1,6 @@
 # CSV2JSON
 
-Implementação de uma ferramenta de conversão de ficheiros CSV em JSON. Ler o relatório para entender ofuncionamento.
+Implementação de uma ferramenta de conversão de ficheiros CSV em JSON. O funcionamento da aplicação é detalhado no relatório. 
 
 Nota final: 20/20
  
